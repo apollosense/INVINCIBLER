@@ -364,13 +364,41 @@
     return AC;
   }
   function outNode(){ var a = AC, g = a.createGain(); g.connect(a.destination); if(recDest) g.connect(recDest); return g; }
+  // a big dramatic hit for when the card cuts in: low boom, a brass-like
+  // chord stab and a bit of room echo. made here, no sound files
+  var verb = null;
+  function room(){
+    var a = AC; if(verb) return verb;
+    var n = Math.floor(a.sampleRate*2.2), ir = a.createBuffer(2, n, a.sampleRate);
+    for(var c=0; c<2; c++){ var d = ir.getChannelData(c); for(var i=0; i<n; i++) d[i] = (Math.random()*2 - 1)*Math.pow(1 - i/n, 3.2); }
+    var cv = a.createConvolver(); cv.buffer = ir;
+    var wet = a.createGain(); wet.gain.value = .35;
+    cv.connect(wet); wet.connect(a.destination);
+    verb = { input:cv, wet:wet };
+    return verb;
+  }
   function boom(at){
     var a = audio(); if(!a || !$('sound').checked) return;
-    var o = a.createOscillator(), g = a.createGain(), out = outNode();
-    o.type = 'sine'; o.frequency.setValueAtTime(110, at); o.frequency.exponentialRampToValueAtTime(38, at + .5);
-    g.gain.setValueAtTime(.0001, at); g.gain.exponentialRampToValueAtTime(.9, at + .01); g.gain.exponentialRampToValueAtTime(.0001, at + 1.1);
-    o.connect(g); g.connect(out); o.start(at); o.stop(at + 1.2);
-    noise(at, .18, 2200, .5);
+    var out = outNode(), r = room();
+    if(recDest){ try{ r.wet.connect(recDest); }catch(e){} }
+    // sub boom
+    var o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(120, at); o.frequency.exponentialRampToValueAtTime(36, at + .6);
+    g.gain.setValueAtTime(.0001, at); g.gain.exponentialRampToValueAtTime(1, at + .008); g.gain.exponentialRampToValueAtTime(.0001, at + 1.4);
+    o.connect(g); g.connect(out); o.start(at); o.stop(at + 1.5);
+    // brass stab: a low minor chord of detuned saws through a closing filter
+    var f = a.createBiquadFilter(), sg = a.createGain();
+    f.type = 'lowpass'; f.Q.value = 2;
+    f.frequency.setValueAtTime(3200, at); f.frequency.exponentialRampToValueAtTime(420, at + 1.2);
+    sg.gain.setValueAtTime(.0001, at); sg.gain.exponentialRampToValueAtTime(.32, at + .02); sg.gain.exponentialRampToValueAtTime(.0001, at + 1.6);
+    f.connect(sg); sg.connect(out); sg.connect(r.input);
+    [55, 65.41, 82.41, 110, 130.81, 164.81].forEach(function(hz, i){
+      [-6, 6].forEach(function(det){
+        var so = a.createOscillator(); so.type = 'sawtooth'; so.frequency.value = hz; so.detune.value = det + i;
+        so.connect(f); so.start(at); so.stop(at + 1.7);
+      });
+    });
+    noise(at, .22, 2600, .45);
   }
   function noise(at, len, freq, vol){
     var a = audio(); if(!a || !$('sound').checked) return;
@@ -502,8 +530,21 @@
 
   // ---- controls -----------------------------------------------------------------------------
   function selPreset(id){
-    Array.prototype.forEach.call($('presets').children, function(b){ b.classList.toggle('sel', b.getAttribute('data-id') === id); });
+    var name = 'Your own colors';
+    Array.prototype.forEach.call($('presets').children, function(b){
+      var on = b.getAttribute('data-id') === id; b.classList.toggle('sel', on);
+      if(on){ name = b.textContent; var st = $('presets'); st.scrollLeft = Math.max(0, b.offsetLeft - st.offsetLeft - 8); }
+    });
+    $('lookName').textContent = name;
   }
+  function syncArrows(){
+    var st = $('presets'), max = st.scrollWidth - st.clientWidth;
+    $('lookPrev').disabled = st.scrollLeft <= 4; $('lookNext').disabled = st.scrollLeft >= max - 4;
+  }
+  $('presets').addEventListener('scroll', syncArrows);
+  $('lookPrev').addEventListener('click', function(){ var st = $('presets'); st.scrollLeft -= st.clientWidth*.85; });
+  $('lookNext').addEventListener('click', function(){ var st = $('presets'); st.scrollLeft += st.clientWidth*.85; });
+  window.addEventListener('resize', syncArrows);
   function setFx(fx){
     S.fx = fx;
     Array.prototype.forEach.call($('fx').children, function(b){ b.classList.toggle('sel', b.getAttribute('data-fx') === fx); });
@@ -528,7 +569,7 @@
       b.addEventListener('click', function(){ applyPreset(p); });
       $('presets').appendChild(b); thumbs.push({ p:p, c:c });
     });
-    selPreset(S.preset);
+    selPreset(S.preset); setTimeout(syncArrows, 50);
   }
   var thumbT = 0;
   function drawThumbs(){

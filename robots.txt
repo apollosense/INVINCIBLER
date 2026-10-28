@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://apollosense.github.io/INVINCIBLER/sitemap.xml
