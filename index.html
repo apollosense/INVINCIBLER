@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>INVINCIBLER - Invincible Title Card Maker</title>
+<meta name="description" content="Make your own Invincible title card. Type anything, pick the colors, add blood, press play, save it as a picture or a video. Free, no sign up.">
+<meta property="og:title" content="INVINCIBLER - Invincible Title Card Maker">
+<meta property="og:description" content="Type anything and it becomes an Invincible title card. Add blood, press play, save it.">
+<meta name="theme-color" content="#189EF2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <canvas id="logo" width="900" height="150" aria-label="INVINCIBLER"></canvas>
+  <p class="tag">type anything and it turns into the title card. add blood, cracks, glitch or space holes, press play, save it as a picture, GIF or video.</p>
+</header>
+
+<main class="wrap">
+  <section class="stage">
+    <div class="frame" id="frame">
+      <canvas id="card" width="1920" height="1080" aria-label="Your title card"></canvas>
+      <div class="nope" id="nope" hidden>
+        <b>nope.</b>
+        <span>that word isn't allowed here. change it and the card comes back.</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn red" id="play">&#9654; Play</button>
+      <button type="button" class="btn yellow" id="savePng">Save PNG</button>
+      <button type="button" class="btn blue" id="record"><span class="dot"></span> Record video</button>
+      <button type="button" class="btn ghost" id="gif">Save GIF</button>
+      <button type="button" class="btn ghost" id="copy">Copy image</button>
+      <button type="button" class="btn ghost" id="random">Random</button>
+    </div>
+    <p class="status" id="status" role="status"></p>
+  </section>
+
+  <aside class="panel">
+    <label class="field">Title
+      <textarea id="title" rows="2" maxlength="80" spellcheck="false">THINK MARK!</textarea>
+      <small>one line per row. it shrinks to fit.</small>
+    </label>
+
+    <details open>
+      <summary>Look</summary>
+      <div class="presets" id="presets"></div>
+      <div class="row">
+        <label class="color">Letters <input type="color" id="fg" value="#FAE800"></label>
+        <label class="color">Background <input type="color" id="bg" value="#169AF5"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="grain" checked> Grainy texture</label>
+    </details>
+
+    <details open>
+      <summary>Effect</summary>
+      <div class="fx" id="fx">
+        <button type="button" data-fx="none" class="sel">None</button>
+        <button type="button" data-fx="blood">Blood</button>
+        <button type="button" data-fx="cracks">Cracked</button>
+        <button type="button" data-fx="glitch">Glitch</button>
+        <button type="button" data-fx="space">Space holes</button>
+      </div>
+      <div class="fxbox" data-for="blood" hidden>
+        <div class="ep-head"><span>How bloody (season 1 episodes)</span><b id="epV">EP. 4</b></div>
+        <div class="eps" id="eps"></div>
+        <div class="row">
+          <label class="color">Ink <input type="color" id="ink" value="#050505"></label>
+          <label class="color">Blood <input type="color" id="blood" value="#B3080E"></label>
+        </div>
+      </div>
+      <div class="fxbox" data-for="cracks" hidden>
+        <small>the background breaks into pieces. letters change color inside the pieces.</small>
+        <div class="row">
+          <label class="color">Pieces <input type="color" id="holeBg" value="#457CBD"></label>
+          <label class="color">Letters in pieces <input type="color" id="holeFg" value="#000000"></label>
+        </div>
+      </div>
+      <div class="fxbox" data-for="glitch" hidden>
+        <small>the color split look. press play and it flips through the season 3 colors.</small>
+      </div>
+      <div class="fxbox" data-for="space" hidden>
+        <small>holes punch through the card into space, like the season 3 finale.</small>
+      </div>
+      <button type="button" class="btn ghost small" id="reseed">New random shapes</button>
+    </details>
+
+    <details>
+      <summary>Text</summary>
+      <label class="range">Size <input type="range" id="size" min="8" max="30" step="0.5" value="22"> <output id="sizeV">22</output></label>
+      <label class="range">Bend <input type="range" id="bend" min="0" max="30" step="1" value="10"> <output id="bendV">10</output></label>
+      <label class="range">Height on card <input type="range" id="ypos" min="5" max="60" step="0.5" value="22.5"> <output id="yposV">22.5</output></label>
+      <label class="check"><input type="checkbox" id="credits" checked> Credits under the title</label>
+      <div id="creditsBox">
+        <label class="field">Small line <input type="text" id="cred1" maxlength="60" value="BASED ON THE COMIC BOOK BY"></label>
+        <label class="field">Big line <input type="text" id="cred2" maxlength="80" value="Robert Kirkman, Cory Walker, &amp; Ryan Ottley"></label>
+      </div>
+    </details>
+
+    <details>
+      <summary>Animation &amp; saving</summary>
+      <label class="range">Length <input type="range" id="dur" min="2" max="10" step="0.5" value="4"> <output id="durV">4s</output></label>
+      <label class="check"><input type="checkbox" id="sound" checked> Sound when playing / in videos</label>
+      <label class="check"><input type="checkbox" id="punch" checked> Punch in at the start</label>
+      <label class="field">GIF size
+        <select id="gifW"><option value="480">480 px (small file)</option><option value="640" selected>640 px</option><option value="960">960 px (big file)</option></select>
+      </label>
+    </details>
+  </aside>
+</main>
+
+<footer class="foot">
+  <p>made by <a href="https://github.com/apollosense" target="_blank" rel="noopener noreferrer">apollosense</a>. fan made, not official. not connected to Amazon, Skybound or Image Comics.</p>
+  <p>also made: <a href="https://apollosense.github.io/megumi-meme-generator/" target="_blank" rel="noopener">Megumi text generator</a></p>
+</footer>
+
+<script src="filter.js"></script>
+<script src="titlecard.js"></script>
+<script src="gif.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

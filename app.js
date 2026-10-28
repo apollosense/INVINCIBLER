@@ -1,0 +1,592 @@
+/* INVINCIBLER - app.js
+   draws the title card on a 1920x1080 canvas. the same draw() is used for the
+   preview, the Play animation, PNG, GIF and video, so they always match.
+   draw(ctx, t): t = seconds into the animation, or null for the finished card. */
+(function(){
+  var W = 1920, H = 1080;
+  var $ = function(id){ return document.getElementById(id); };
+  var card = $('card'), cx = card.getContext('2d');
+  var statusEl = $('status');
+  function say(m){ statusEl.textContent = m || ''; }
+
+  // ---- looks, colors measured from the real cards ---------------------------
+  var PRESETS = [
+    { id:'classic', name:'Classic (season 1)', bg:'#169AF5', fg:'#FAE800', fx:'none' },
+    { id:'bloody',  name:'Bloody (season 1)',  bg:'#169AF5', fg:'#FAE800', fx:'blood', ep:6 },
+    { id:'red',     name:'Red on black (season 2)', bg:'#050505', fg:'#BA0D13', fx:'none', grain:false },
+    { id:'cracked', name:'Cracked (season 2)', bg:'#050505', fg:'#BA0D13', fx:'cracks', grain:false },
+    { id:'blackblue', name:'Black on blue',    bg:'#457CBD', fg:'#000000', fx:'none' },
+    { id:'grey',    name:'Grey (season 3)',    bg:'#44484A', fg:'#598AA9', fx:'none' },
+    { id:'sun',     name:'Yellow & blue',      bg:'#FCDA5A', fg:'#3876AB', fx:'glitch' },
+    { id:'steel',   name:'Steel blue',         bg:'#3678A7', fg:'#FDDB5A', fx:'none' },
+    { id:'brick',   name:'Brick red',          bg:'#C6412E', fg:'#D5E0E8', fx:'none' },
+    { id:'mint',    name:'Mint & red',         bg:'#C8E3E4', fg:'#C4422A', fx:'none' },
+    { id:'silver',  name:'Silver',             bg:'#C3CCCD', fg:'#F8F9FC', fx:'none' },
+    { id:'lime',    name:'Toxic lime',         bg:'#89F349', fg:'#E9F96B', fx:'glitch' },
+    { id:'cream',   name:'Cream & navy',       bg:'#FBF0EA', fg:'#437193', fx:'none' },
+    { id:'night',   name:'Charcoal & gold',    bg:'#2E3234', fg:'#FDE25E', fx:'none' },
+    { id:'coral',   name:'Coral',              bg:'#E76551', fg:'#CAE3E4', fx:'glitch' },
+    { id:'space',   name:'Space holes (season 3 finale)', bg:'#DFE1E1', fg:'#8A9395', fx:'space' },
+    { id:'white',   name:'White & blue',       bg:'#FDFDFD', fg:'#3778A8', fx:'none' }
+  ];
+  // the order the glitch animation flips through
+  var GLITCH_SEQ = ['sun','grey','brick','mint','silver','steel','lime','cream','night','coral'].map(function(id){
+    return PRESETS.filter(function(p){ return p.id===id; })[0];
+  });
+
+  var S = {
+    preset:'classic', bg:'#169AF5', fg:'#FAE800', grain:true,
+    fx:'none', ep:4, ink:'#050505', blood:'#B3080E', holeBg:'#457CBD', holeFg:'#000000',
+    size:22, bend:10, ypos:22.5, credits:true, seed:7
+  };
+
+  // ---- small helpers ----------------------------------------------------------
+  function rng(seed){
+    var a = seed >>> 0;
+    return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  }
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+  function ease(p){ p = clamp(p, 0, 1); return 1 - Math.pow(1-p, 3); }
+  function hexRgb(h){ h = h.replace('#',''); return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)]; }
+  function mix(a, b, k){ var x = hexRgb(a), y = hexRgb(b); return 'rgb(' + [0,1,2].map(function(i){ return Math.round(x[i] + (y[i]-x[i])*k); }).join(',') + ')'; }
+  function canvas(w, h){ var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+
+  var grainImg = new Image(), grainOk = false;
+  grainImg.onload = function(){ grainOk = true; redraw(); };
+  grainImg.src = 'img/grain.jpg';
+
+  // ---- text -------------------------------------------------------------------
+  function titleLines(){
+    var raw = $('title').value.replace(/\r/g,'').split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+    if(!raw.length) raw = [' '];
+    // a long single line gets split in two, like a two line card
+    if(raw.length === 1 && raw[0].length > 18 && raw[0].indexOf(' ') > 0){
+      var words = raw[0].split(/\s+/), best = null;
+      for(var i=1; i<words.length; i++){
+        var a = words.slice(0,i).join(' '), b = words.slice(i).join(' '), d = Math.abs(a.length - b.length);
+        if(!best || d < best.d) best = { d:d, l:[a, b] };
+      }
+      raw = best.l;
+    }
+    return raw;
+  }
+  function titleOpts(){
+    return { cx:W/2, top:H*S.ypos/100, cap:W*S.size/100, maxW:W*.82, bend:S.bend/100 };
+  }
+  var JOST = '"Jost","Futura","Century Gothic","Trebuchet MS",sans-serif';
+  // letters + credits in one color. returns the title box
+  function drawText(ctx, color, dx, dy, noCredits){
+    var o = titleOpts(); o.color = color; o.cx += dx || 0; o.top += dy || 0;
+    var box = TitleCard.draw(ctx, titleLines(), o);
+    if(S.credits && !noCredits){
+      var l1 = $('cred1').value, l2 = $('cred2').value, y = box.bottom + W*.054;
+      ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      [[l1, .0141], [l2, .0198]].forEach(function(p, i){
+        if(!p[0]) return;
+        var px = W*p[1]/.7;
+        ctx.font = '500 ' + px + 'px ' + JOST;
+        var w = ctx.measureText(p[0]).width; if(w > W*.9){ px *= W*.9/w; ctx.font = '500 ' + px + 'px ' + JOST; }
+        ctx.fillText(p[0], o.cx, y + (i ? W*.0406 : 0));
+      });
+    }
+    return box;
+  }
+  var maskC = canvas(W, H), maskX = maskC.getContext('2d');
+  function letterMask(){ maskX.clearRect(0,0,W,H); return drawText(maskX, '#fff', 0, 0, true); }  // blood only soaks the big title
+
+  // ---- background ---------------------------------------------------------------
+  function drawBg(ctx, bg){
+    ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+    if(S.grain && grainOk){
+      ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = .9;
+      ctx.drawImage(grainImg, 0, 0, W, H); ctx.restore();
+    }
+  }
+
+  // ---- blood (season 1) ----------------------------------------------------------
+  // black ink splashes over everything, red spatter only on the letters.
+  // every splash has an episode number, so episode 3 shows everything up to 3
+  function makeBlood(seed, box){
+    var r = rng(seed*31 + 5), ink = [], red = [];
+    var INK = [0, 2, 3, 4, 5, 7, 9, 12, 26], RED = [0, 1, 2, 3, 5, 7, 9, 13, 20];
+    for(var ep=1; ep<=8; ep++){
+      var big = ep >= 8;
+      for(var i=0; i<INK[ep]; i++){
+        var x = r() < .5 ? W*(.08 + r()*.84) : (r() < .5 ? W*r()*.3 : W*(.7 + r()*.3));
+        var y = big ? H*r() : H*(.25 + r()*.7);
+        ink.push(splat(r, x, y, (big ? 70 + r()*130 : 22 + r()*55 + ep*7), ep, i/INK[ep]));
+      }
+      for(var j=0; j<RED[ep]; j++){
+        red.push(splat(r, box.x + r()*box.w, box.y + r()*box.h*.9, big ? 70 + r()*150 : 18 + r()*40 + ep*4, ep, j/RED[ep]));
+      }
+    }
+    var specks = [];
+    for(var q=0; q<260; q++) specks.push([box.x + r()*box.w, box.y + r()*box.h, 2 + Math.pow(r(), 3)*16]);
+    return { ink:ink, red:red, specks:specks };
+  }
+  function blob(r, rad){
+    var n = 14 + Math.floor(r()*10), pts = [];
+    for(var i=0; i<n; i++){ var a = i/n*Math.PI*2, k = rad*(.5 + r()*.5); pts.push([Math.cos(a)*k*1.25, Math.sin(a)*k*.85]); }
+    return pts;
+  }
+  function splat(r, x, y, rad, ep, order){
+    var s = { x:x, y:y, ep:ep, order:order, core:blob(r, rad), spikes:[], dots:[], lines:[] };
+    var ns = 2 + Math.floor(r()*6), dir = r()*Math.PI*2, spread = .25 + r()*1.1;
+    for(var i=0; i<ns; i++){
+      var a = dir + (r()-.5)*spread*2, len = rad*(1.6 + r()*4.2), wd = rad*(.07 + r()*.2);
+      s.spikes.push({ a:a, len:len, w:wd, drop:r() < .6 ? wd*(.5 + r()*.6) : 0 });
+    }
+    var nd = 10 + Math.floor(r()*30);
+    for(var d=0; d<nd; d++){
+      var aa = dir + (r()-.5)*spread*2.6, dist = rad*(1.2 + Math.pow(r(), .7)*5);
+      s.dots.push({ x:Math.cos(aa)*dist, y:Math.sin(aa)*dist, r:Math.max(1.5, rad*.16*(1 - dist/(rad*7))*r() + 1.5) });
+    }
+    if(r() < .45) s.lines.push({ a:dir + (r()-.5), len:rad*(5 + r()*8), w:2 + r()*3 });
+    return s;
+  }
+  function drawSplat(ctx, s, k){
+    if(k <= 0) return;
+    ctx.save(); ctx.translate(s.x, s.y); ctx.scale(k, k);
+    ctx.beginPath();
+    s.core.forEach(function(p, i){
+      var q = s.core[(i+1) % s.core.length], mx = (p[0]+q[0])/2, my = (p[1]+q[1])/2;
+      if(i===0) ctx.moveTo(mx, my); else ctx.quadraticCurveTo(p[0], p[1], mx, my);
+    });
+    var p0 = s.core[0], q0 = s.core[1]; ctx.quadraticCurveTo(p0[0], p0[1], (p0[0]+q0[0])/2, (p0[1]+q0[1])/2);
+    ctx.fill();
+    s.spikes.forEach(function(sp){
+      var c = Math.cos(sp.a), n = Math.sin(sp.a);
+      ctx.beginPath();
+      ctx.moveTo(-n*sp.w, c*sp.w);
+      ctx.quadraticCurveTo(c*sp.len*.5 - n*sp.w*.5, n*sp.len*.5 + c*sp.w*.5, c*sp.len, n*sp.len);
+      ctx.quadraticCurveTo(c*sp.len*.5 + n*sp.w*.5, n*sp.len*.5 - c*sp.w*.5, n*sp.w, -c*sp.w);
+      ctx.fill();
+      if(sp.drop){ ctx.beginPath(); ctx.arc(c*(sp.len + sp.drop*.6), n*(sp.len + sp.drop*.6), sp.drop, 0, Math.PI*2); ctx.fill(); }
+    });
+    s.dots.forEach(function(d){ ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI*2); ctx.fill(); });
+    s.lines.forEach(function(l){
+      ctx.beginPath(); ctx.lineWidth = l.w; ctx.lineCap = 'round';
+      ctx.moveTo(0,0); ctx.lineTo(Math.cos(l.a)*l.len, Math.sin(l.a)*l.len); ctx.stroke();
+    });
+    ctx.restore();
+  }
+  var redC = canvas(W, H), redX = redC.getContext('2d');
+  // amount: episode number (can be a fraction while animating)
+  function drawBlood(ctx, blood, amount, t0){
+    function k(s){
+      if(s.ep > Math.ceil(amount)) return 0;
+      if(s.ep < Math.ceil(amount)) return 1;
+      var frac = amount - (s.ep - 1);
+      return ease((frac - s.order*.8)/.2);
+    }
+    ctx.fillStyle = S.ink; ctx.strokeStyle = S.ink;
+    blood.ink.forEach(function(s){ drawSplat(ctx, s, k(s)); });
+    redX.clearRect(0,0,W,H); redX.fillStyle = S.blood; redX.strokeStyle = S.blood;
+    blood.red.forEach(function(s){ drawSplat(redX, s, k(s)); });
+    if(Math.ceil(amount) >= 8){
+      // last episode: the letters are soaked, only little specks of color left
+      var full = clamp(amount - 7, 0, 1);
+      redX.globalAlpha = full; redX.fillRect(0,0,W,H); redX.globalAlpha = 1;
+      redX.globalCompositeOperation = 'destination-out';
+      blood.specks.forEach(function(d){ redX.beginPath(); redX.arc(d[0], d[1], d[2]*full, 0, Math.PI*2); redX.fill(); });
+      redX.globalCompositeOperation = 'source-over';
+    }
+    redX.globalCompositeOperation = 'destination-in'; redX.drawImage(maskC, 0, 0); redX.globalCompositeOperation = 'source-over';
+    ctx.drawImage(redC, 0, 0);
+  }
+
+  // ---- holes: cracks (season 2) and space (season 3 finale) ------------------------
+  function makeHoles(seed, kind){
+    var r = rng(seed*17 + (kind==='space' ? 99 : 3)), holes = [], n = kind==='space' ? 7 : 5;
+    for(var i=0; i<n; i++){
+      var hx = W*(.05 + r()*.9), hy = H*(.05 + r()*.9), R = (kind==='space' ? 150 : 260) + r()*260, pts = [];
+      var sp = kind==='space', m = sp ? 16 + Math.floor(r()*8) : 9 + Math.floor(r()*7);
+      for(var j=0; j<m; j++){
+        var a = j/m*Math.PI*2 + (r()-.5)*.4, k = sp ? R*(.7 + r()*.35) : R*(.45 + r()*.75);
+        pts.push([Math.cos(a)*k*(1.3), Math.sin(a)*k]);
+        if(kind==='cracks' && r() < .5){ var a2 = a + .5/m*Math.PI*2; pts.push([Math.cos(a2)*k*.6*1.3, Math.sin(a2)*k*.6]); }
+      }
+      holes.push({ x:hx, y:hy, pts:pts, at:i/n });
+    }
+    var lines = [];
+    for(var l=0; l<14; l++){
+      var x0 = W*r(), y0 = H*r(), seg = [[x0, y0]];
+      for(var s2=0; s2<6; s2++){ var last = seg[seg.length-1]; seg.push([last[0] + (r()-.5)*420, last[1] + (r()-.5)*260]); }
+      lines.push({ seg:seg, at:r() });
+    }
+    var stars = [];
+    for(var st=0; st<420; st++) stars.push([W*r(), H*r(), r()*2.2 + .4, r()]);
+    var streaks = [];
+    for(var q=0; q<16; q++) streaks.push({ x:W*r(), y:H*r(), a:-.5 + r()*.25, len:80 + r()*260, at:r() });
+    var shards = [];
+    for(var sh=0; sh<26; sh++) shards.push({ h:Math.floor(r()*n), a:r()*Math.PI*2, v:300 + r()*700, s:10 + r()*34, spin:(r()-.5)*8, at:r() });
+    return { holes:holes, lines:lines, stars:stars, streaks:streaks, shards:shards };
+  }
+  function holePath(ctx, holes, p){
+    ctx.beginPath();
+    holes.forEach(function(h){
+      var k = ease((p - h.at*.7)/.3);
+      if(k <= 0) return;
+      h.pts.forEach(function(pt, i){
+        var x = h.x + pt[0]*k, y = h.y + pt[1]*k;
+        if(i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+    });
+  }
+  function drawHoles(ctx, data, kind, p, t){
+    var inside = kind==='space' ? mix(S.fg.length===7 ? S.fg : '#8A9395', '#000000', .25) : S.holeFg;
+    // cracks in the surface first
+    if(kind==='cracks'){
+      ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 2;
+      data.lines.forEach(function(l){
+        var k = ease((p - l.at*.5)/.5); if(k <= 0) return;
+        ctx.beginPath(); ctx.moveTo(l.seg[0][0], l.seg[0][1]);
+        var n = Math.max(1, Math.round((l.seg.length-1)*k));
+        for(var i=1; i<=n; i++) ctx.lineTo(l.seg[i][0], l.seg[i][1]);
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+    ctx.save();
+    holePath(ctx, data.holes, p);
+    ctx.clip('evenodd');
+    if(kind==='space'){
+      ctx.fillStyle = '#020306'; ctx.fillRect(0,0,W,H);
+      data.stars.forEach(function(s){ ctx.fillStyle = 'rgba(255,255,255,' + (.35 + s[3]*.65) + ')'; ctx.fillRect(s[0], s[1], s[2], s[2]); });
+      data.streaks.forEach(function(s){
+        var ph = t == null ? .6 : ((t*.35 + s.at) % 1);
+        var x = s.x + Math.cos(s.a)*ph*900, y = s.y + Math.sin(s.a)*ph*900;
+        var g = ctx.createLinearGradient(x, y, x - Math.cos(s.a)*s.len, y - Math.sin(s.a)*s.len);
+        g.addColorStop(0, 'rgba(255,255,255,.9)'); g.addColorStop(1, 'rgba(255,170,90,0)');
+        ctx.strokeStyle = g; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - Math.cos(s.a)*s.len, y - Math.sin(s.a)*s.len); ctx.stroke();
+      });
+    } else {
+      ctx.fillStyle = S.holeBg; ctx.fillRect(0,0,W,H);
+      if(S.grain && grainOk){ ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = .7; ctx.drawImage(grainImg, 0, 0, W, H); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; }
+    }
+    drawText(ctx, inside);
+    ctx.restore();
+    // a thin edge around every hole
+    ctx.save();
+    holePath(ctx, data.holes, p);
+    ctx.strokeStyle = kind==='space' ? 'rgba(40,44,46,.85)' : 'rgba(0,0,0,.55)';
+    ctx.lineWidth = kind==='space' ? 9 : 4; ctx.lineJoin = 'miter'; ctx.stroke();
+    ctx.restore();
+    // flying pieces while it breaks
+    if(t != null && kind==='space'){
+      data.shards.forEach(function(s){
+        var h = data.holes[s.h], st = h.at*.7*durS()*.75 + .5 + s.at*.3, age = t - st;
+        if(age < 0 || age > 1.4) return;
+        var x = h.x + Math.cos(s.a)*s.v*age, y = h.y + Math.sin(s.a)*s.v*age + 300*age*age;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(s.spin*age); ctx.globalAlpha = 1 - age/1.4;
+        ctx.fillStyle = S.bg; ctx.strokeStyle = 'rgba(0,0,0,.4)';
+        ctx.beginPath(); ctx.moveTo(-s.s, -s.s*.4); ctx.lineTo(s.s*.8, -s.s*.6); ctx.lineTo(s.s*.3, s.s*.7); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      });
+    }
+  }
+
+  // ---- glitch (season 3 color split) ------------------------------------------------
+  function drawGlitch(ctx, bg, fg, off){
+    drawBg(ctx, bg);
+    ctx.save(); ctx.globalAlpha = .85;
+    drawText(ctx, '#FF5FA8', -off, off*.3);
+    drawText(ctx, '#3FF2A0', off, -off*.3);
+    ctx.restore();
+    drawText(ctx, fg);
+  }
+
+  // ---- the whole card ------------------------------------------------------------------
+  var cache = {};
+  function data(kind){
+    var key = kind + ':' + S.seed + ':' + $('title').value + ':' + S.size + ':' + S.bend + ':' + S.ypos + ':' + S.credits;
+    if(!cache[key]){ cache = {}; cache[key] = kind==='blood' ? makeBlood(S.seed, letterMask()) : makeHoles(S.seed, kind); }
+    return cache[key];
+  }
+  function durS(){ return parseFloat($('dur').value) || 4; }
+
+  function draw(ctx, t){
+    var D = durS(), anim = t != null;
+    var p = anim ? clamp((t - .5)/(D*.75 - .5), 0, 1) : 1;   // how far the effect has grown
+    ctx.save();
+    if(anim && $('punch').checked && t < .3){
+      var z = 1 + .06*(1 - ease(t/.3));
+      ctx.translate(W/2, H/2); ctx.scale(z, z); ctx.translate(-W/2, -H/2);
+    }
+    if(S.fx === 'glitch'){
+      var bg = S.bg, fg = S.fg, off = 7;
+      if(anim){
+        var step = Math.floor(t/.42), pr = GLITCH_SEQ[step % GLITCH_SEQ.length];
+        if(t > .42){ bg = pr.bg; fg = pr.fg; }
+        off = 4 + rng(step*7 + 1)()*14;
+      }
+      drawGlitch(ctx, bg, fg, off);
+    } else {
+      drawBg(ctx, S.bg);
+      drawText(ctx, S.fg);
+      if(S.fx === 'blood'){
+        var bl = data('blood');
+        letterMask();
+        drawBlood(ctx, bl, anim ? S.ep*p : S.ep);
+      } else if(S.fx === 'cracks' || S.fx === 'space'){
+        drawHoles(ctx, data(S.fx), S.fx, p, anim ? t : null);
+      }
+    }
+    ctx.restore();
+  }
+
+  // ---- slur check ------------------------------------------------------------------------
+  function blocked(){
+    var all = $('title').value + ' ' + (S.credits ? $('cred1').value + ' ' + $('cred2').value : '');
+    return !!(window.megumiIsExplicit && window.megumiIsExplicit(all));
+  }
+  function syncBlocked(){
+    var b = blocked();
+    $('frame').classList.toggle('blocked', b); $('nope').hidden = !b;
+    ['savePng','gif','record','copy','play'].forEach(function(id){ $(id).disabled = b || busy; });
+    return b;
+  }
+
+  // ---- drawing on screen -----------------------------------------------------------------
+  var raf = 0, playing = null, busy = false;
+  function redraw(){
+    if(playing) return;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(function(){ draw(cx, null); syncBlocked(); });
+  }
+
+  // ---- sound (made in the browser, no files) ----------------------------------------------
+  var AC = null, recDest = null;
+  function audio(){
+    if(!AC){ try{ AC = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ return null; } }
+    if(AC.state === 'suspended') AC.resume();
+    return AC;
+  }
+  function outNode(){ var a = AC, g = a.createGain(); g.connect(a.destination); if(recDest) g.connect(recDest); return g; }
+  function boom(at){
+    var a = audio(); if(!a || !$('sound').checked) return;
+    var o = a.createOscillator(), g = a.createGain(), out = outNode();
+    o.type = 'sine'; o.frequency.setValueAtTime(110, at); o.frequency.exponentialRampToValueAtTime(38, at + .5);
+    g.gain.setValueAtTime(.0001, at); g.gain.exponentialRampToValueAtTime(.9, at + .01); g.gain.exponentialRampToValueAtTime(.0001, at + 1.1);
+    o.connect(g); g.connect(out); o.start(at); o.stop(at + 1.2);
+    noise(at, .18, 2200, .5);
+  }
+  function noise(at, len, freq, vol){
+    var a = audio(); if(!a || !$('sound').checked) return;
+    var n = Math.floor(a.sampleRate*len), buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+    for(var i=0; i<n; i++) d[i] = (Math.random()*2 - 1)*Math.pow(1 - i/n, 2.2);
+    var src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    f.type = 'lowpass'; f.frequency.value = freq; g.gain.value = vol;
+    src.buffer = buf; src.connect(f); f.connect(g); g.connect(outNode()); src.start(at);
+  }
+  function blip(at, hz){
+    var a = audio(); if(!a || !$('sound').checked) return;
+    var o = a.createOscillator(), g = a.createGain();
+    o.type = 'square'; o.frequency.value = hz;
+    g.gain.setValueAtTime(.06, at); g.gain.exponentialRampToValueAtTime(.0001, at + .12);
+    o.connect(g); g.connect(outNode()); o.start(at); o.stop(at + .13);
+  }
+  function scheduleSounds(){
+    var a = audio(); if(!a) return;
+    var t0 = a.currentTime + .03, D = durS();
+    boom(t0);
+    if(S.fx === 'blood'){
+      for(var e=1; e<=S.ep; e++){ var at = .5 + (D*.75 - .5)*(e-1)/S.ep; noise(t0 + at, .25, 900, .55); }
+    } else if(S.fx === 'cracks' || S.fx === 'space'){
+      var hs = data(S.fx).holes;
+      hs.forEach(function(h){ noise(t0 + .5 + (D*.75 - .5)*h.at*.7, S.fx==='space' ? .6 : .35, S.fx==='space' ? 600 : 3500, .5); });
+    } else if(S.fx === 'glitch'){
+      for(var s=1; s*.42 < D; s++) blip(t0 + s*.42, 180 + (s*137 % 500));
+    }
+  }
+
+  // ---- play -------------------------------------------------------------------------------
+  function play(onFrame){
+    return new Promise(function(done){
+      var D = durS(), start = performance.now();
+      cancelAnimationFrame(raf);
+      playing = true;
+      (function frame(){
+        var t = (performance.now() - start)/1000;
+        draw(cx, Math.min(t, D));
+        if(onFrame) onFrame(t);
+        if(t < D) requestAnimationFrame(frame);
+        else { playing = null; done(); }
+      })();
+    });
+  }
+  $('play').addEventListener('click', function(){
+    if(playing || syncBlocked()) return;
+    scheduleSounds(); play().then(redraw);
+  });
+
+  // ---- saving -----------------------------------------------------------------------------
+  function fileName(ext){
+    var base = titleLines().join(' ').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40) || 'title-card';
+    return 'invincibler-' + base + '.' + ext;
+  }
+  function saveBlob(blob, name){
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  }
+  function finalBlob(){
+    return new Promise(function(res){ var c = canvas(W, H); draw(c.getContext('2d'), null); c.toBlob(res, 'image/png'); });
+  }
+  $('savePng').addEventListener('click', function(){
+    if(syncBlocked()) return;
+    finalBlob().then(function(b){ saveBlob(b, fileName('png')); say('PNG saved.'); });
+  });
+  $('copy').addEventListener('click', function(){
+    if(syncBlocked()) return;
+    if(!navigator.clipboard || !window.ClipboardItem){ say('Copy is not available in this browser. Use Save PNG.'); return; }
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': finalBlob() })])
+      .then(function(){ say('Copied! paste it anywhere.'); })
+      .catch(function(){ say('Copy did not work here. Use Save PNG.'); });
+  });
+
+  function tick(){ return new Promise(function(r){ setTimeout(r, 0); }); }
+  function setBusy(b){ busy = b; syncBlocked(); $('random').disabled = b; }
+  $('gif').addEventListener('click', async function(){
+    if(busy || syncBlocked()) return;
+    setBusy(true);
+    try{
+      var gw = parseInt($('gifW').value, 10), gh = Math.round(gw*9/16), fps = 15, D = durS();
+      var n = Math.round(D*fps) + 1, big = canvas(W, H), bx = big.getContext('2d'), small = canvas(gw, gh), sx = small.getContext('2d'), frames = [];
+      for(var i=0; i<n; i++){
+        draw(bx, Math.min(i/fps, D));
+        sx.drawImage(big, 0, 0, gw, gh);
+        frames.push(sx.getImageData(0, 0, gw, gh).data);
+        if(i % 3 === 0){ say('Making GIF… ' + Math.round(i/n*80) + '%'); await tick(); }
+      }
+      // hold the last frame for a second before it loops
+      for(var h=0; h<fps; h++) frames.push(frames[frames.length-1]);
+      say('Making GIF… 90%'); await tick();
+      var bytes = window.encodeGif(frames, gw, gh, Math.round(100/fps));
+      var blob = new Blob([bytes], { type:'image/gif' });
+      saveBlob(blob, fileName('gif'));
+      say('GIF saved (' + Math.round(blob.size/1024) + ' KB).');
+    }catch(e){ say('The GIF could not be made. Try a smaller size.'); }
+    setBusy(false); redraw();
+  });
+
+  $('record').addEventListener('click', function(){
+    if(busy || syncBlocked()) return;
+    if(!card.captureStream || !window.MediaRecorder){ say('This browser cannot record video. Try Chrome or Firefox, or save a GIF.'); return; }
+    var types = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+    var type = types.filter(function(t){ return MediaRecorder.isTypeSupported(t); })[0] || '';
+    var stream = card.captureStream(30), a = audio();
+    if(a && $('sound').checked){
+      recDest = a.createMediaStreamDestination();
+      recDest.stream.getAudioTracks().forEach(function(tr){ stream.addTrack(tr); });
+    }
+    var chunks = [], rec;
+    try{ rec = new MediaRecorder(stream, type ? { mimeType:type, videoBitsPerSecond:8e6 } : undefined); }
+    catch(e){ say('Recording failed to start in this browser.'); recDest = null; return; }
+    rec.ondataavailable = function(e){ if(e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = function(){
+      var mt = rec.mimeType || type || 'video/webm', ext = mt.indexOf('mp4') > -1 ? 'mp4' : 'webm';
+      saveBlob(new Blob(chunks, { type:mt }), fileName(ext));
+      say('Video saved (' + ext + ').'); recDest = null;
+      $('record').classList.remove('rec'); setBusy(false); redraw();
+    };
+    setBusy(true); $('record').classList.add('rec'); say('Recording…');
+    draw(cx, 0);
+    rec.start();
+    setTimeout(function(){
+      scheduleSounds();
+      play().then(function(){ setTimeout(function(){ rec.stop(); }, 700); });
+    }, 120);
+  });
+
+  // ---- controls -----------------------------------------------------------------------------
+  function selPreset(id){
+    Array.prototype.forEach.call($('presets').children, function(b){ b.classList.toggle('sel', b.getAttribute('data-id') === id); });
+  }
+  function setFx(fx){
+    S.fx = fx;
+    Array.prototype.forEach.call($('fx').children, function(b){ b.classList.toggle('sel', b.getAttribute('data-fx') === fx); });
+    Array.prototype.forEach.call(document.querySelectorAll('.fxbox'), function(b){ b.hidden = b.getAttribute('data-for') !== fx; });
+  }
+  function applyPreset(p){
+    S.preset = p.id; S.bg = p.bg; S.fg = p.fg;
+    $('bg').value = p.bg; $('fg').value = p.fg;
+    S.grain = p.grain !== false; $('grain').checked = S.grain;
+    setFx(p.fx || 'none');
+    if(p.ep) setEp(p.ep);
+    selPreset(p.id); redraw();
+  }
+  // little previews use your own title, so you see what you get
+  var thumbs = [];
+  function buildPresets(){
+    PRESETS.forEach(function(p){
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'preset'; b.setAttribute('data-id', p.id);
+      var c = canvas(320, 180), sp = document.createElement('span'); sp.textContent = p.name;
+      b.appendChild(c); b.appendChild(sp);
+      b.addEventListener('click', function(){ applyPreset(p); });
+      $('presets').appendChild(b); thumbs.push({ p:p, c:c });
+    });
+    selPreset(S.preset);
+  }
+  var thumbT = 0;
+  function drawThumbs(){
+    clearTimeout(thumbT);
+    thumbT = setTimeout(function(){
+      thumbs.forEach(function(th){
+        var x = th.c.getContext('2d');
+        x.fillStyle = th.p.bg; x.fillRect(0,0,320,180);
+        TitleCard.draw(x, titleLines(), { cx:160, top:42, cap:64, maxW:290, color:th.p.fg });
+      });
+    }, 150);
+  }
+  function setEp(n){
+    S.ep = n; $('epV').textContent = 'EP. ' + n;
+    Array.prototype.forEach.call($('eps').children, function(b){ b.classList.toggle('sel', +b.textContent === n); });
+  }
+  for(var e=1; e<=8; e++){
+    (function(n){
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = n;
+      b.addEventListener('click', function(){ setEp(n); if(S.fx !== 'blood') setFx('blood'); redraw(); });
+      $('eps').appendChild(b);
+    })(e);
+  }
+  $('fx').addEventListener('click', function(ev){
+    var b = ev.target.closest('button'); if(!b) return;
+    setFx(b.getAttribute('data-fx')); redraw();
+  });
+  [['fg','fg'],['bg','bg'],['ink','ink'],['blood','blood'],['holeBg','holeBg'],['holeFg','holeFg']].forEach(function(p){
+    $(p[0]).addEventListener('input', function(){ S[p[1]] = this.value; if(p[0]==='fg' || p[0]==='bg') selPreset(''); redraw(); });
+  });
+  $('grain').addEventListener('change', function(){ S.grain = this.checked; redraw(); });
+  $('credits').addEventListener('change', function(){ S.credits = this.checked; $('creditsBox').hidden = !this.checked; redraw(); });
+  [['size','sizeV',''],['bend','bendV',''],['ypos','yposV',''],['dur','durV','s']].forEach(function(p){
+    var el = $(p[0]);
+    function upd(){ $(p[1]).textContent = el.value + p[2]; if(p[0] !== 'dur') S[p[0]] = parseFloat(el.value); redraw(); }
+    el.addEventListener('input', upd); upd();
+  });
+  ['title','cred1','cred2'].forEach(function(id){
+    $(id).addEventListener('input', function(){ redraw(); if(id === 'title') drawThumbs(); });
+  });
+  $('reseed').addEventListener('click', function(){ S.seed = Math.floor(Math.random()*1e6); redraw(); });
+  $('random').addEventListener('click', function(){
+    var p = PRESETS[Math.floor(Math.random()*PRESETS.length)];
+    applyPreset(p);
+    if(p.fx === 'none' && Math.random() < .5) setFx(['blood','cracks','space','glitch'][Math.floor(Math.random()*4)]);
+    if(S.fx === 'blood') setEp(1 + Math.floor(Math.random()*8));
+    S.seed = Math.floor(Math.random()*1e6); redraw();
+  });
+
+  // ---- header logo -------------------------------------------------------------------------
+  function drawLogo(){
+    var l = $('logo'), x = l.getContext('2d');
+    x.clearRect(0,0,l.width,l.height);
+    TitleCard.draw(x, ['INVINCIBLER'], { cx:l.width/2, top:14, cap:112, maxW:l.width*.96, color:'#FAE800' });
+  }
+
+  buildPresets(); setEp(4); setFx('none'); drawLogo(); drawThumbs(); redraw();
+  if(document.fonts && document.fonts.load) document.fonts.load('500 40px Jost').then(redraw, function(){});
+  // test hook: lets an automatic check draw any moment of the animation
+  window.__invincibler = { draw:function(t){ draw(cx, t); }, S:S, setFx:setFx, applyPreset:function(id){ applyPreset(PRESETS.filter(function(p){ return p.id===id; })[0]); }, setEp:setEp };
+})();
