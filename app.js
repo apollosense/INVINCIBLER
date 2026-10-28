@@ -1,7 +1,3 @@
-/* INVINCIBLER - app.js
-   draws the title card on a 1920x1080 canvas. the same draw() is used for the
-   preview, the Play animation, PNG, GIF and video, so they always match.
-   draw(ctx, t): t = seconds into the animation, or null for the finished card. */
 (function(){
   var W = 1920, H = 1080;
   var $ = function(id){ return document.getElementById(id); };
@@ -9,7 +5,7 @@
   var statusEl = $('status');
   function say(m){ statusEl.textContent = m || ''; }
 
-  // ---- looks, colors measured from the real cards ---------------------------
+  // colors i took from the real cards
   var PRESETS = [
     { id:'classic', name:'Classic (season 1)', bg:'#169AF5', fg:'#FAE800', fx:'none' },
     { id:'bloody',  name:'Bloody (season 1)',  bg:'#169AF5', fg:'#FAE800', fx:'blood', ep:6 },
@@ -28,13 +24,10 @@
     { id:'coral',   name:'Coral',              bg:'#E76551', fg:'#CAE3E4', fx:'glitch' },
     { id:'space',   name:'Space holes (season 3 finale)', bg:'#DFE1E1', fg:'#8A9395', fx:'space' },
     { id:'white',   name:'White & blue',       bg:'#FDFDFD', fg:'#3778A8', fx:'none' },
-    // season 2 episode 3. background, red paint and the red "THE ALIEN" are cut
-    // from the real card, the title is in mint with wider letters like the real one
     { id:'allen',   name:'Allen the Alien (season 2)', bg:'#2A1FD4', fg:'#2FFFD0', fx:'none', grain:false,
       img:'img/allen-bg.jpg', paint:'img/allen-paint.webp', alien:'img/allen-the-alien.webp',
       size:22, ypos:12.9, sx:1.27, bend:9, credY:.731, title:'ALLEN' }
   ];
-  // the order the glitch animation flips through
   var GLITCH_SEQ = ['sun','grey','brick','mint','silver','steel','lime','cream','night','coral'].map(function(id){
     return PRESETS.filter(function(p){ return p.id===id; })[0];
   });
@@ -45,7 +38,6 @@
     size:22, bend:10, ypos:22.5, credits:true, seed:7
   };
 
-  // ---- small helpers ----------------------------------------------------------
   function rng(seed){
     var a = seed >>> 0;
     return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
@@ -60,11 +52,10 @@
   grainImg.onload = function(){ grainOk = true; redraw(); };
   grainImg.src = 'img/grain.jpg';
 
-  // ---- text -------------------------------------------------------------------
+  // splits long titles in 2 lines
   function titleLines(){
     var raw = $('title').value.replace(/\r/g,'').split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
     if(!raw.length) raw = [' '];
-    // a long single line gets split in two, like a two line card
     if(raw.length === 1 && raw[0].length > 18 && raw[0].indexOf(' ') > 0){
       var words = raw[0].split(/\s+/), best = null;
       for(var i=1; i<words.length; i++){
@@ -79,8 +70,6 @@
     return { cx:W/2, top:H*S.ypos/100, cap:W*S.size/100, maxW:W*.82, maxH:H*.5, bend:S.bend/100, sx:S.sx || 1 };
   }
   var JOST = '"Jost","Futura","Century Gothic","Trebuchet MS",sans-serif';
-  // letters + credits in one color. returns the title box
-  // mode: 'title' = only the big title, 'credits' = only the credits, nothing = both
   function drawText(ctx, color, dx, dy, mode){
     var o = titleOpts(); o.color = color; o.cx += dx || 0; o.top += dy || 0;
     var box;
@@ -100,9 +89,8 @@
     return box;
   }
   var maskC = canvas(W, H), maskX = maskC.getContext('2d');
-  function letterMask(){ maskX.clearRect(0,0,W,H); return drawText(maskX, '#fff', 0, 0, 'title'); }  // blood only soaks the big title
+  function letterMask(){ maskX.clearRect(0,0,W,H); return drawText(maskX, '#fff', 0, 0, 'title'); }
 
-  // ---- background ---------------------------------------------------------------
   var imgs = {};
   function img(src){
     if(!src) return null;
@@ -119,17 +107,13 @@
     }
   }
 
-  // ---- blood (season 1) ----------------------------------------------------------
-  // black ink splashes over everything, red spatter only on the letters.
-  // every splash has an episode number, so episode 3 shows everything up to 3
+  // blood stuff (ink and red are pngs from the show)
   function makeBlood(seed, box){
     var r = rng(seed*31 + 5), specks = [];
     for(var q=0; q<260; q++) specks.push([box.x + r()*box.w, box.y + r()*box.h, 2 + Math.pow(r(), 3)*16]);
     return { specks:specks };
   }
   var redC = canvas(W, H), redX = redC.getContext('2d');
-  // the black ink and red spatter are cut out of the real season 1 cards,
-  // one layer per episode (2 to 8). episode 1 is the clean card
   var LAYERS = {}, tinted = {};
   function layerImg(kind, ep){
     var key = kind + ep;
@@ -149,9 +133,6 @@
     return (tinted[key] = c);
   }
   function preloadBlood(){ for(var e=2; e<=8; e++){ layerImg('ink', e); layerImg('inkon', e); if(e < 8) layerImg('red', e); } }
-  // amount: episode number (can be a fraction while animating, then the next
-  // episode's blood pops in). part 'under' = the ink behind the letters,
-  // part 'over' = the ink and red that landed on the letters
   function bloodLevels(amount){ var L = Math.floor(amount); return { L:L, f:ease((amount - L)/.12) }; }
   function both(x, kind, color, lv){
     var a = layer(kind, lv.L, color), b = layer(kind, lv.L + 1, color);
@@ -166,7 +147,6 @@
     both(redX, 'red', S.blood, lv);
     var full = lv.L >= 8 ? 1 : (lv.L === 7 ? lv.f : 0);
     if(full > 0){
-      // last episode: the letters are soaked, only little specks of color left
       redX.fillStyle = S.blood; redX.globalAlpha = full; redX.fillRect(0,0,W,H); redX.globalAlpha = 1;
       redX.globalCompositeOperation = 'destination-out';
       blood.specks.forEach(function(d){ redX.beginPath(); redX.arc(d[0], d[1], d[2], 0, Math.PI*2); redX.fill(); });
@@ -176,7 +156,7 @@
     ctx.drawImage(redC, 0, 0);
   }
 
-  // ---- holes: cracks (season 2) and space (season 3 finale) ------------------------
+  // cracks + space holes
   function makeHoles(seed, kind){
     var r = rng(seed*17 + (kind==='space' ? 99 : 3)), holes = [], n = kind==='space' ? 7 : 5;
     for(var i=0; i<n; i++){
@@ -217,7 +197,6 @@
   }
   function drawHoles(ctx, data, kind, p, t){
     var inside = kind==='space' ? mix(S.fg.length===7 ? S.fg : '#8A9395', '#000000', .25) : S.holeFg;
-    // cracks in the surface first
     if(kind==='cracks'){
       ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 2;
       data.lines.forEach(function(l){
@@ -248,13 +227,11 @@
     }
     drawText(ctx, inside);
     ctx.restore();
-    // a thin edge around every hole
     ctx.save();
     holePath(ctx, data.holes, p);
     ctx.strokeStyle = kind==='space' ? 'rgba(40,44,46,.85)' : 'rgba(0,0,0,.55)';
     ctx.lineWidth = kind==='space' ? 9 : 4; ctx.lineJoin = 'miter'; ctx.stroke();
     ctx.restore();
-    // flying pieces while it breaks
     if(t != null && kind==='space'){
       data.shards.forEach(function(s){
         var h = data.holes[s.h], st = h.at*.7*durS()*.75 + .5 + s.at*.3, age = t - st;
@@ -268,7 +245,6 @@
     }
   }
 
-  // red paint on top of the title for the Allen look
   function drawSpecial(ctx){
     var sp = S.special; if(!sp) return;
     var p1 = img(sp.paint), p2 = $('alienLine').checked ? img(sp.alien) : null;
@@ -276,7 +252,7 @@
     if(p2) ctx.drawImage(p2, 0, 0, W, H);
   }
 
-  // ---- glitch (season 3 color split) ------------------------------------------------
+  // glitch thing
   function drawGlitch(ctx, bg, fg, off){
     drawBg(ctx, bg);
     ctx.save(); ctx.globalAlpha = .85;
@@ -286,7 +262,6 @@
     drawText(ctx, fg);
   }
 
-  // ---- the whole card ------------------------------------------------------------------
   var cache = {};
   function data(kind){
     var key = kind + ':' + S.seed + ':' + $('title').value + ':' + S.size + ':' + S.bend + ':' + S.ypos + ':' + S.credits;
@@ -295,9 +270,10 @@
   }
   function durS(){ return parseFloat($('dur').value) || 4; }
 
+  // main draw, t = time (null = just the final card)
   function draw(ctx, t){
     var D = durS(), anim = t != null;
-    var p = anim ? clamp((t - .5)/(D*.75 - .5), 0, 1) : 1;   // how far the effect has grown
+    var p = anim ? clamp((t - .5)/(D*.75 - .5), 0, 1) : 1;
     ctx.save();
     if(anim && $('punch').checked && t < .3){
       var z = 1 + .06*(1 - ease(t/.3));
@@ -328,14 +304,11 @@
     ctx.restore();
   }
 
-  // ---- buttons -----------------------------------------------------------------------------
-  // turns the save buttons off while a GIF or video is being made
   function syncButtons(){
     ['savePng','gif','record','copy','play'].forEach(function(id){ $(id).disabled = busy; });
     return false;
   }
 
-  // ---- drawing on screen -----------------------------------------------------------------
   var raf = 0, playing = null, busy = false;
   function redraw(){
     if(playing) return;
@@ -343,7 +316,6 @@
     raf = requestAnimationFrame(function(){ draw(cx, null); syncButtons(); });
   }
 
-  // ---- sound (made in the browser, no files) ----------------------------------------------
   var AC = null, recDest = null;
   function audio(){
     if(!AC){ try{ AC = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ return null; } }
@@ -351,8 +323,6 @@
     return AC;
   }
   function outNode(){ var a = AC, g = a.createGain(); g.connect(a.destination); if(recDest) g.connect(recDest); return g; }
-  // a big dramatic hit for when the card cuts in: low boom, a brass-like
-  // chord stab and a bit of room echo. made here, no sound files
   var verb = null;
   function room(){
     var a = AC; if(verb) return verb;
@@ -364,16 +334,15 @@
     verb = { input:cv, wet:wet };
     return verb;
   }
+  // sound fx, no files
   function boom(at){
     var a = audio(); if(!a || !$('sound').checked) return;
     var out = outNode(), r = room();
     if(recDest){ try{ r.wet.connect(recDest); }catch(e){} }
-    // sub boom
     var o = a.createOscillator(), g = a.createGain();
     o.type = 'sine'; o.frequency.setValueAtTime(120, at); o.frequency.exponentialRampToValueAtTime(36, at + .6);
     g.gain.setValueAtTime(.0001, at); g.gain.exponentialRampToValueAtTime(1, at + .008); g.gain.exponentialRampToValueAtTime(.0001, at + 1.4);
     o.connect(g); g.connect(out); o.start(at); o.stop(at + 1.5);
-    // brass stab: a low minor chord of detuned saws through a closing filter
     var f = a.createBiquadFilter(), sg = a.createGain();
     f.type = 'lowpass'; f.Q.value = 2;
     f.frequency.setValueAtTime(3200, at); f.frequency.exponentialRampToValueAtTime(420, at + 1.2);
@@ -416,7 +385,6 @@
     }
   }
 
-  // ---- play -------------------------------------------------------------------------------
   function play(onFrame){
     return new Promise(function(done){
       var D = durS(), start = performance.now();
@@ -436,7 +404,6 @@
     scheduleSounds(); play().then(redraw);
   });
 
-  // ---- saving -----------------------------------------------------------------------------
   function fileName(ext){
     var base = titleLines().join(' ').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40) || 'title-card';
     return 'invincibler-' + base + '.' + ext;
@@ -463,6 +430,7 @@
 
   function tick(){ return new Promise(function(r){ setTimeout(r, 0); }); }
   function setBusy(b){ busy = b; syncButtons(); $('random').disabled = b; }
+  // gif saving
   $('gif').addEventListener('click', async function(){
     if(busy || syncButtons()) return;
     setBusy(true);
@@ -475,7 +443,6 @@
         frames.push(sx.getImageData(0, 0, gw, gh).data);
         if(i % 3 === 0){ say('Making GIF… ' + Math.round(i/n*80) + '%'); await tick(); }
       }
-      // hold the last frame for a second before it loops
       for(var h=0; h<fps; h++) frames.push(frames[frames.length-1]);
       say('Making GIF… 90%'); await tick();
       var bytes = window.encodeGif(frames, gw, gh, Math.round(100/fps));
@@ -486,6 +453,7 @@
     setBusy(false); redraw();
   });
 
+  // video recording
   $('record').addEventListener('click', function(){
     if(busy || syncButtons()) return;
     if(!card.captureStream || !window.MediaRecorder){ say('This browser cannot record video. Try Chrome or Firefox, or save a GIF.'); return; }
@@ -515,7 +483,6 @@
     }, 120);
   });
 
-  // ---- controls -----------------------------------------------------------------------------
   function selPreset(id){
     var name = 'Your own colors';
     Array.prototype.forEach.call($('presets').children, function(b){
@@ -543,7 +510,6 @@
     S.grain = p.grain !== false; $('grain').checked = S.grain;
     setFx(p.fx || 'none'); if(S.fx === 'blood') preloadBlood();
     if(p.ep) setEp(p.ep);
-    // special looks bring their own size and spot, normal ones go back to the default
     var was = S.special;
     S.special = p.img ? p : null;
     $('allenBox').hidden = !S.special;
@@ -558,7 +524,6 @@
     if(S.special){ img(p.img); img(p.paint); img(p.alien); }
     selPreset(p.id); redraw();
   }
-  // little previews use your own title, so you see what you get
   var thumbs = [];
   function buildPresets(){
     PRESETS.forEach(function(p){
@@ -623,7 +588,7 @@
     S.seed = Math.floor(Math.random()*1e6); redraw();
   });
 
-  // ---- header logo -------------------------------------------------------------------------
+  // logo on top
   function drawLogo(){
     var l = $('logo'), x = l.getContext('2d');
     x.clearRect(0,0,l.width,l.height);
@@ -632,6 +597,4 @@
 
   buildPresets(); setEp(4); setFx('none'); drawLogo(); drawThumbs(); redraw();
   if(document.fonts && document.fonts.load) document.fonts.load('500 40px Jost').then(redraw, function(){});
-  // test hook: lets an automatic check draw any moment of the animation
-  window.__invincibler = { draw:function(t){ draw(cx, t); }, S:S, setFx:setFx, applyPreset:function(id){ applyPreset(PRESETS.filter(function(p){ return p.id===id; })[0]); }, setEp:setEp };
 })();

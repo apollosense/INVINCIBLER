@@ -1,31 +1,17 @@
 # INVINCIBLER
 
-Make your own Invincible title card. Type anything and it turns into the big title card, then add effects, press play and save it.
+invincible title card maker. type anything and it becomes the title card
 
-**Try it:** https://apollosense.github.io/INVINCIBLER/
+site: https://apollosense.github.io/INVINCIBLER/
 
-## What it does
+## stuff it does
 
-- Hand made letters in the style of the title card: tall, narrow, spiky, and bent like the real one
-- Looks from the real cards across the seasons: the classic blue and yellow, red on black, black on blue, and the season 3 colors
-- Effects:
-  - **Blood**: black ink and red splatter that gets worse episode by episode (1 to 8), like season 1
-  - **Cracked**: the card breaks into pieces and the letters change color inside them, like season 2
-  - **Glitch**: the color split look, and Play flips through the season 3 colors
-  - **Space holes**: holes punch through into space, like the season 3 finale
-- Play the animation with sound
-- Save as PNG, GIF or video (with sound), or copy the picture
-- Credits line under the title that you can change or turn off
+- letters that look like the real ones (bent and spiky)
+- colors from season 1, 2, 3 + allen the alien
+- blood (ep 1 to 8), cracked, glitch, space holes
+- play button with sound
+- save png, gif, video or copy it
 
-## Files
+fan made, not official. not connected to amazon, skybound or image comics.
 
-- `index.html` - the page
-- `style.css` - the look of the site
-- `app.js` - draws the card, the effects, the animation and the saving
-- `titlecard.js` - the title card letters, drawn as shapes
-- `gif.js` - makes the GIFs, no libraries
-- `img/grain.jpg` - the grainy texture on the cards
-
-Fan made, not official. Not connected to Amazon, Skybound or Image Comics.
-
-Made by [apollosense](https://github.com/apollosense). Also made: [Megumi text generator](https://apollosense.github.io/megumi-meme-generator/).
+made by apollosense. also check my [megumi text generator](https://apollosense.github.io/megumi-meme-generator/)

@@ -1,6 +1,3 @@
-/* INVINCIBLER - gif.js
-   a small GIF maker with no libraries. every frame gets its own 256 colours,
-   so the colour changing looks stay clean. */
 (function(){
   function gifPalette(frames, npx){
     var hist = new Uint32Array(32768), f, i, d, total = 0;
@@ -83,6 +80,7 @@
     out.push(0);
   }
 
+  // gif file writer
   function encodeGif(frames, w, h, delay){
     var npx = w*h, out = [], f, i, q;
     function u16(v){ out.push(v & 255, (v>>8) & 255); }

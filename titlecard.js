@@ -1,10 +1,5 @@
-// hand made letters in the style of the invincible title card.
-// every letter is a few flat shapes on a 100 unit tall grid: tall and narrow,
-// upright strokes get a spike to the left at the top and a foot to the right at
-// the bottom, round letters get cut corners. then the whole block gets bent:
-// flat top, bottom bows up in the middle, and it fans out towards the bottom
 (function(){
-  var S = 12, T = 11, F = 4, C = 8, GAP = 8;   // stroke, bar, spike, cut corner, letter gap
+  var S = 12, T = 11, F = 4, C = 8, GAP = 8;
 
   function stem(x){ return [[x-F,0],[x+S,0],[x+S,86],[x+S+F,95],[x+S+F,100],[x,100],[x,13],[x-F,4]]; }
   function rect(x0,y0,x1,y1){ return [[x0,y0],[x1,y0],[x1,y1],[x0,y1]]; }
@@ -12,9 +7,9 @@
   function topArm(x0,x1){ return [[x0,0],[x1,0],[x1-5,T],[x0,T]]; }
   function midArm(x0,x1){ return [[x0,43],[x1,43],[x1-5,57],[x0,57]]; }
   function botArm(x0,x1){ return [[x0,100-T],[x1-5,100-T],[x1+F,100],[x0,100]]; }
-  // a shape is a list of outlines, filled even-odd so inner outlines become holes
   function sh(){ return Array.prototype.slice.call(arguments); }
 
+  // letters, 100 = full height
   var G = {};
   function add(ch, w, shapes){ G[ch] = { w:w, s:shapes }; }
   var w = 34, h = w/2;
@@ -77,7 +72,6 @@
   add('$', w, [sh([[0,C],[C,0],[w,0],[w-4,T],[S,T],[S,42],[w-C,42],[w,42+C],[w,100-C],[w-C,100],[0,100],[4,100-T],[w-S,100-T],[w-S,58],[C,58],[0,58-C]]), sh(rect(h-4,-10,h+4,110))]);
   add(' ', 14, []);
 
-  // turkish and other accented capitals: the plain letter plus a small mark
   var MARKS = {
     'Ç':['C','cedilla'], 'Ş':['S','cedilla'], 'Ğ':['G','breve'], 'İ':['I','dot'], 'Ö':['O','dots'], 'Ü':['U','dots'],
     'Ä':['A','dots'], 'Ë':['E','dots'], 'Ï':['I','dots'], 'Á':['A','acute'], 'É':['E','acute'], 'Í':['I','acute'],
@@ -113,15 +107,14 @@
   }
   function supported(ch){ return !!glyph(String(ch).toUpperCase()) || /\s/.test(ch); }
 
-  // o = { cx, top, cap, maxW, color, bend, fan, lineGap }
-  // cap is the letter height in the middle; returns the box it covered
+  // draws + bends it like the real logo
   function draw(ctx, lines, o){
     var bend = o.bend == null ? .10 : o.bend, fan = o.fan == null ? .065 : o.fan, lg = o.lineGap == null ? 16 : o.lineGap;
     var L = lines.map(layout), wt = Math.max.apply(null, L.map(function(l){ return l.w; }).concat([1]));
     var bh = L.length*100 + (L.length-1)*lg;
-    var k = o.cap/100, sx = o.sx || 1;   // sx: wider or narrower letters
+    var k = o.cap/100, sx = o.sx || 1;
     if(o.maxW && wt*k*sx*(1+fan) > o.maxW) k = o.maxW/(wt*sx*(1+fan));
-    if(o.maxH && bh*k*(1+bend) > o.maxH) k = o.maxH/(bh*(1+bend));   // tall multi-line titles shrink too
+    if(o.maxH && bh*k*(1+bend) > o.maxH) k = o.maxH/(bh*(1+bend));
     function P(X, Y){
       var u = Math.max(-1, Math.min(1, (X - wt/2)/(wt/2))), v = Math.max(0, Y/bh);
       return [o.cx + (X - wt/2)*k*sx*(1 + fan*v), o.top + Y*k*(1 + bend*u*u)];
@@ -149,7 +142,6 @@
       });
     });
     var half = wt/2*k*sx*(1+fan);
-    // bottom = where the middle of the last line ends (the curve's highest point)
     return { x:o.cx - half, y:o.top, w:half*2, h:bh*k*(1+bend), bottom:o.top + bh*k, k:k };
   }
   window.TitleCard = { draw:draw, layout:layout, supported:supported };
