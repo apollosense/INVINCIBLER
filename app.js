@@ -27,7 +27,12 @@
     { id:'night',   name:'Charcoal & gold',    bg:'#2E3234', fg:'#FDE25E', fx:'none' },
     { id:'coral',   name:'Coral',              bg:'#E76551', fg:'#CAE3E4', fx:'glitch' },
     { id:'space',   name:'Space holes (season 3 finale)', bg:'#DFE1E1', fg:'#8A9395', fx:'space' },
-    { id:'white',   name:'White & blue',       bg:'#FDFDFD', fg:'#3778A8', fx:'none' }
+    { id:'white',   name:'White & blue',       bg:'#FDFDFD', fg:'#3778A8', fx:'none' },
+    // season 2 episode 3. background, red paint and the red "THE ALIEN" are cut
+    // from the real card, the title is in mint with wider letters like the real one
+    { id:'allen',   name:'Allen the Alien (season 2)', bg:'#2A1FD4', fg:'#2FFFD0', fx:'none', grain:false,
+      img:'img/allen-bg.jpg', paint:'img/allen-paint.webp', alien:'img/allen-the-alien.webp',
+      size:22, ypos:12.9, sx:1.27, bend:9, credY:.731, title:'ALLEN' }
   ];
   // the order the glitch animation flips through
   var GLITCH_SEQ = ['sun','grey','brick','mint','silver','steel','lime','cream','night','coral'].map(function(id){
@@ -71,15 +76,18 @@
     return raw;
   }
   function titleOpts(){
-    return { cx:W/2, top:H*S.ypos/100, cap:W*S.size/100, maxW:W*.82, bend:S.bend/100 };
+    return { cx:W/2, top:H*S.ypos/100, cap:W*S.size/100, maxW:W*.82, maxH:H*.5, bend:S.bend/100, sx:S.sx || 1 };
   }
   var JOST = '"Jost","Futura","Century Gothic","Trebuchet MS",sans-serif';
   // letters + credits in one color. returns the title box
-  function drawText(ctx, color, dx, dy, noCredits){
+  // mode: 'title' = only the big title, 'credits' = only the credits, nothing = both
+  function drawText(ctx, color, dx, dy, mode){
     var o = titleOpts(); o.color = color; o.cx += dx || 0; o.top += dy || 0;
-    var box = TitleCard.draw(ctx, titleLines(), o);
-    if(S.credits && !noCredits){
-      var l1 = $('cred1').value, l2 = $('cred2').value, y = box.bottom + W*.054;
+    var box;
+    if(mode === 'credits'){ var off = canvas(1, 1).getContext('2d'); box = TitleCard.draw(off, titleLines(), o); }
+    else box = TitleCard.draw(ctx, titleLines(), o);
+    if(S.credits && mode !== 'title'){
+      var l1 = $('cred1').value, l2 = $('cred2').value, y = S.special && S.special.credY ? H*S.special.credY : box.bottom + W*.054;
       ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
       [[l1, .0141], [l2, .0198]].forEach(function(p, i){
         if(!p[0]) return;
@@ -92,11 +100,19 @@
     return box;
   }
   var maskC = canvas(W, H), maskX = maskC.getContext('2d');
-  function letterMask(){ maskX.clearRect(0,0,W,H); return drawText(maskX, '#fff', 0, 0, true); }  // blood only soaks the big title
+  function letterMask(){ maskX.clearRect(0,0,W,H); return drawText(maskX, '#fff', 0, 0, 'title'); }  // blood only soaks the big title
 
   // ---- background ---------------------------------------------------------------
+  var imgs = {};
+  function img(src){
+    if(!src) return null;
+    if(!imgs[src]){ var im = new Image(); im.onload = function(){ im.ok = true; redraw(); drawThumbs(); }; im.src = src; imgs[src] = im; }
+    return imgs[src].ok ? imgs[src] : null;
+  }
   function drawBg(ctx, bg){
     ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+    var sp = S.special, bi = sp && bg === sp.bg ? img(sp.img) : null;
+    if(bi){ ctx.drawImage(bi, 0, 0, W, H); return; }
     if(S.grain && grainOk){
       ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = .9;
       ctx.drawImage(grainImg, 0, 0, W, H); ctx.restore();
@@ -107,88 +123,53 @@
   // black ink splashes over everything, red spatter only on the letters.
   // every splash has an episode number, so episode 3 shows everything up to 3
   function makeBlood(seed, box){
-    var r = rng(seed*31 + 5), ink = [], red = [];
-    var INK = [0, 2, 3, 4, 5, 7, 9, 12, 26], RED = [0, 1, 2, 3, 5, 7, 9, 13, 20];
-    for(var ep=1; ep<=8; ep++){
-      var big = ep >= 8;
-      for(var i=0; i<INK[ep]; i++){
-        var x = r() < .5 ? W*(.08 + r()*.84) : (r() < .5 ? W*r()*.3 : W*(.7 + r()*.3));
-        var y = big ? H*r() : H*(.25 + r()*.7);
-        ink.push(splat(r, x, y, (big ? 70 + r()*130 : 22 + r()*55 + ep*7), ep, i/INK[ep]));
-      }
-      for(var j=0; j<RED[ep]; j++){
-        red.push(splat(r, box.x + r()*box.w, box.y + r()*box.h*.9, big ? 70 + r()*150 : 18 + r()*40 + ep*4, ep, j/RED[ep]));
-      }
-    }
-    var specks = [];
+    var r = rng(seed*31 + 5), specks = [];
     for(var q=0; q<260; q++) specks.push([box.x + r()*box.w, box.y + r()*box.h, 2 + Math.pow(r(), 3)*16]);
-    return { ink:ink, red:red, specks:specks };
-  }
-  function blob(r, rad){
-    var n = 14 + Math.floor(r()*10), pts = [];
-    for(var i=0; i<n; i++){ var a = i/n*Math.PI*2, k = rad*(.5 + r()*.5); pts.push([Math.cos(a)*k*1.25, Math.sin(a)*k*.85]); }
-    return pts;
-  }
-  function splat(r, x, y, rad, ep, order){
-    var s = { x:x, y:y, ep:ep, order:order, core:blob(r, rad), spikes:[], dots:[], lines:[] };
-    var ns = 2 + Math.floor(r()*6), dir = r()*Math.PI*2, spread = .25 + r()*1.1;
-    for(var i=0; i<ns; i++){
-      var a = dir + (r()-.5)*spread*2, len = rad*(1.6 + r()*4.2), wd = rad*(.07 + r()*.2);
-      s.spikes.push({ a:a, len:len, w:wd, drop:r() < .6 ? wd*(.5 + r()*.6) : 0 });
-    }
-    var nd = 10 + Math.floor(r()*30);
-    for(var d=0; d<nd; d++){
-      var aa = dir + (r()-.5)*spread*2.6, dist = rad*(1.2 + Math.pow(r(), .7)*5);
-      s.dots.push({ x:Math.cos(aa)*dist, y:Math.sin(aa)*dist, r:Math.max(1.5, rad*.16*(1 - dist/(rad*7))*r() + 1.5) });
-    }
-    if(r() < .45) s.lines.push({ a:dir + (r()-.5), len:rad*(5 + r()*8), w:2 + r()*3 });
-    return s;
-  }
-  function drawSplat(ctx, s, k){
-    if(k <= 0) return;
-    ctx.save(); ctx.translate(s.x, s.y); ctx.scale(k, k);
-    ctx.beginPath();
-    s.core.forEach(function(p, i){
-      var q = s.core[(i+1) % s.core.length], mx = (p[0]+q[0])/2, my = (p[1]+q[1])/2;
-      if(i===0) ctx.moveTo(mx, my); else ctx.quadraticCurveTo(p[0], p[1], mx, my);
-    });
-    var p0 = s.core[0], q0 = s.core[1]; ctx.quadraticCurveTo(p0[0], p0[1], (p0[0]+q0[0])/2, (p0[1]+q0[1])/2);
-    ctx.fill();
-    s.spikes.forEach(function(sp){
-      var c = Math.cos(sp.a), n = Math.sin(sp.a);
-      ctx.beginPath();
-      ctx.moveTo(-n*sp.w, c*sp.w);
-      ctx.quadraticCurveTo(c*sp.len*.5 - n*sp.w*.5, n*sp.len*.5 + c*sp.w*.5, c*sp.len, n*sp.len);
-      ctx.quadraticCurveTo(c*sp.len*.5 + n*sp.w*.5, n*sp.len*.5 - c*sp.w*.5, n*sp.w, -c*sp.w);
-      ctx.fill();
-      if(sp.drop){ ctx.beginPath(); ctx.arc(c*(sp.len + sp.drop*.6), n*(sp.len + sp.drop*.6), sp.drop, 0, Math.PI*2); ctx.fill(); }
-    });
-    s.dots.forEach(function(d){ ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI*2); ctx.fill(); });
-    s.lines.forEach(function(l){
-      ctx.beginPath(); ctx.lineWidth = l.w; ctx.lineCap = 'round';
-      ctx.moveTo(0,0); ctx.lineTo(Math.cos(l.a)*l.len, Math.sin(l.a)*l.len); ctx.stroke();
-    });
-    ctx.restore();
+    return { specks:specks };
   }
   var redC = canvas(W, H), redX = redC.getContext('2d');
-  // amount: episode number (can be a fraction while animating)
-  function drawBlood(ctx, blood, amount, t0){
-    function k(s){
-      if(s.ep > Math.ceil(amount)) return 0;
-      if(s.ep < Math.ceil(amount)) return 1;
-      var frac = amount - (s.ep - 1);
-      return ease((frac - s.order*.8)/.2);
+  // the black ink and red spatter are cut out of the real season 1 cards,
+  // one layer per episode (2 to 8). episode 1 is the clean card
+  var LAYERS = {}, tinted = {};
+  function layerImg(kind, ep){
+    var key = kind + ep;
+    if(!LAYERS[key]){
+      var im = new Image(); im.onload = function(){ im.ok = true; tinted = {}; redraw(); };
+      im.src = 'img/blood/' + key + '.webp'; LAYERS[key] = im;
     }
-    ctx.fillStyle = S.ink; ctx.strokeStyle = S.ink;
-    blood.ink.forEach(function(s){ drawSplat(ctx, s, k(s)); });
-    redX.clearRect(0,0,W,H); redX.fillStyle = S.blood; redX.strokeStyle = S.blood;
-    blood.red.forEach(function(s){ drawSplat(redX, s, k(s)); });
-    if(Math.ceil(amount) >= 8){
+    return LAYERS[key].ok ? LAYERS[key] : null;
+  }
+  function layer(kind, ep, color){
+    if(ep < 2 || ep > 8 || (kind === 'red' && ep > 7)) return null;   // episode 8's red is the full soak below
+    var key = kind + ep + color;
+    if(tinted[key]) return tinted[key];
+    var im = layerImg(kind, ep); if(!im) return null;
+    var c = canvas(W, H), x = c.getContext('2d');
+    x.drawImage(im, 0, 0, W, H); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0,0,W,H);
+    return (tinted[key] = c);
+  }
+  function preloadBlood(){ for(var e=2; e<=8; e++){ layerImg('ink', e); layerImg('inkon', e); if(e < 8) layerImg('red', e); } }
+  // amount: episode number (can be a fraction while animating, then the next
+  // episode's blood pops in). part 'under' = the ink behind the letters,
+  // part 'over' = the ink and red that landed on the letters
+  function bloodLevels(amount){ var L = Math.floor(amount); return { L:L, f:ease((amount - L)/.12) }; }
+  function both(x, kind, color, lv){
+    var a = layer(kind, lv.L, color), b = layer(kind, lv.L + 1, color);
+    if(a) x.drawImage(a, 0, 0);
+    if(b && lv.f > 0){ x.globalAlpha = lv.f; x.drawImage(b, 0, 0); x.globalAlpha = 1; }
+  }
+  function drawBloodUnder(ctx, amount){ both(ctx, 'ink', S.ink, bloodLevels(amount)); }
+  function drawBloodOver(ctx, blood, amount){
+    var lv = bloodLevels(amount);
+    redX.clearRect(0,0,W,H);
+    both(redX, 'inkon', S.ink, lv);
+    both(redX, 'red', S.blood, lv);
+    var full = lv.L >= 8 ? 1 : (lv.L === 7 ? lv.f : 0);
+    if(full > 0){
       // last episode: the letters are soaked, only little specks of color left
-      var full = clamp(amount - 7, 0, 1);
-      redX.globalAlpha = full; redX.fillRect(0,0,W,H); redX.globalAlpha = 1;
+      redX.fillStyle = S.blood; redX.globalAlpha = full; redX.fillRect(0,0,W,H); redX.globalAlpha = 1;
       redX.globalCompositeOperation = 'destination-out';
-      blood.specks.forEach(function(d){ redX.beginPath(); redX.arc(d[0], d[1], d[2]*full, 0, Math.PI*2); redX.fill(); });
+      blood.specks.forEach(function(d){ redX.beginPath(); redX.arc(d[0], d[1], d[2], 0, Math.PI*2); redX.fill(); });
       redX.globalCompositeOperation = 'source-over';
     }
     redX.globalCompositeOperation = 'destination-in'; redX.drawImage(maskC, 0, 0); redX.globalCompositeOperation = 'source-over';
@@ -287,6 +268,14 @@
     }
   }
 
+  // red paint on top of the title for the Allen look
+  function drawSpecial(ctx){
+    var sp = S.special; if(!sp) return;
+    var p1 = img(sp.paint), p2 = $('alienLine').checked ? img(sp.alien) : null;
+    if(p1) ctx.drawImage(p1, 0, 0, W, H);
+    if(p2) ctx.drawImage(p2, 0, 0, W, H);
+  }
+
   // ---- glitch (season 3 color split) ------------------------------------------------
   function drawGlitch(ctx, bg, fg, off){
     drawBg(ctx, bg);
@@ -324,11 +313,14 @@
       drawGlitch(ctx, bg, fg, off);
     } else {
       drawBg(ctx, S.bg);
+      var amt = anim ? 1 + (S.ep - 1)*p : S.ep;
+      if(S.fx === 'blood') drawBloodUnder(ctx, amt);
       drawText(ctx, S.fg);
+      drawSpecial(ctx);
       if(S.fx === 'blood'){
         var bl = data('blood');
         letterMask();
-        drawBlood(ctx, bl, anim ? S.ep*p : S.ep);
+        drawBloodOver(ctx, bl, amt);
       } else if(S.fx === 'cracks' || S.fx === 'space'){
         drawHoles(ctx, data(S.fx), S.fx, p, anim ? t : null);
       }
@@ -420,7 +412,7 @@
     var t0 = a.currentTime + .03, D = durS();
     boom(t0);
     if(S.fx === 'blood'){
-      for(var e=1; e<=S.ep; e++){ var at = .5 + (D*.75 - .5)*(e-1)/S.ep; noise(t0 + at, .25, 900, .55); }
+      for(var e=2; e<=S.ep; e++){ var at = .5 + (D*.75 - .5)*(e-1)/(S.ep-1); noise(t0 + at, .25, 900, .55); }
     } else if(S.fx === 'cracks' || S.fx === 'space'){
       var hs = data(S.fx).holes;
       hs.forEach(function(h){ noise(t0 + .5 + (D*.75 - .5)*h.at*.7, S.fx==='space' ? .6 : .35, S.fx==='space' ? 600 : 3500, .5); });
@@ -554,8 +546,21 @@
     S.preset = p.id; S.bg = p.bg; S.fg = p.fg;
     $('bg').value = p.bg; $('fg').value = p.fg;
     S.grain = p.grain !== false; $('grain').checked = S.grain;
-    setFx(p.fx || 'none');
+    setFx(p.fx || 'none'); if(S.fx === 'blood') preloadBlood();
     if(p.ep) setEp(p.ep);
+    // special looks bring their own size and spot, normal ones go back to the default
+    var was = S.special;
+    S.special = p.img ? p : null;
+    $('allenBox').hidden = !S.special;
+    if(S.special || was){
+      setRange('size', p.size || 22); setRange('ypos', p.ypos || 22.5); setRange('bend', p.bend || 10);
+      S.sx = p.sx || 1;
+      var t = $('title').value.trim().toUpperCase();
+      if(p.title && (t === 'THINK MARK!' || !t)) $('title').value = p.title;
+      else if(!p.title && was && t === (was.title || '')) $('title').value = 'THINK MARK!';
+      drawThumbs();
+    }
+    if(S.special){ img(p.img); img(p.paint); img(p.alien); }
     selPreset(p.id); redraw();
   }
   // little previews use your own title, so you see what you get
@@ -578,10 +583,13 @@
       thumbs.forEach(function(th){
         var x = th.c.getContext('2d');
         x.fillStyle = th.p.bg; x.fillRect(0,0,320,180);
-        TitleCard.draw(x, titleLines(), { cx:160, top:42, cap:64, maxW:290, color:th.p.fg });
+        var bi = img(th.p.img); if(bi) x.drawImage(bi, 0, 0, 320, 180);
+        TitleCard.draw(x, titleLines(), { cx:160, top:th.p.img ? 26 : 42, cap:64, maxW:290, color:th.p.fg, sx:th.p.sx || 1 });
+        [th.p.paint, th.p.alien].forEach(function(src){ var o = img(src); if(o) x.drawImage(o, 0, 0, 320, 180); });
       });
     }, 150);
   }
+  function setRange(id, v){ $(id).value = v; $(id).dispatchEvent(new Event('input')); }
   function setEp(n){
     S.ep = n; $('epV').textContent = 'EP. ' + n;
     Array.prototype.forEach.call($('eps').children, function(b){ b.classList.toggle('sel', +b.textContent === n); });
@@ -589,18 +597,19 @@
   for(var e=1; e<=8; e++){
     (function(n){
       var b = document.createElement('button'); b.type = 'button'; b.textContent = n;
-      b.addEventListener('click', function(){ setEp(n); if(S.fx !== 'blood') setFx('blood'); redraw(); });
+      b.addEventListener('click', function(){ setEp(n); if(S.fx !== 'blood') setFx('blood'); preloadBlood(); redraw(); });
       $('eps').appendChild(b);
     })(e);
   }
   $('fx').addEventListener('click', function(ev){
     var b = ev.target.closest('button'); if(!b) return;
-    setFx(b.getAttribute('data-fx')); redraw();
+    setFx(b.getAttribute('data-fx')); if(S.fx === 'blood') preloadBlood(); redraw();
   });
   [['fg','fg'],['bg','bg'],['ink','ink'],['blood','blood'],['holeBg','holeBg'],['holeFg','holeFg']].forEach(function(p){
     $(p[0]).addEventListener('input', function(){ S[p[1]] = this.value; if(p[0]==='fg' || p[0]==='bg') selPreset(''); redraw(); });
   });
   $('grain').addEventListener('change', function(){ S.grain = this.checked; redraw(); });
+  $('alienLine').addEventListener('change', redraw);
   $('credits').addEventListener('change', function(){ S.credits = this.checked; $('creditsBox').hidden = !this.checked; redraw(); });
   [['size','sizeV',''],['bend','bendV',''],['ypos','yposV',''],['dur','durV','s']].forEach(function(p){
     var el = $(p[0]);
