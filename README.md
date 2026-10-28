@@ -16,7 +16,6 @@ Make your own Invincible title card. Type anything and it turns into the big tit
 - Play the animation with sound
 - Save as PNG, GIF or video (with sound), or copy the picture
 - Credits line under the title that you can change or turn off
-- Slurs and explicit words blur the card and nothing can be saved
 
 ## Files
 
@@ -25,7 +24,6 @@ Make your own Invincible title card. Type anything and it turns into the big tit
 - `app.js` - draws the card, the effects, the animation and the saving
 - `titlecard.js` - the title card letters, drawn as shapes
 - `gif.js` - makes the GIFs, no libraries
-- `filter.js` - the word check
 - `img/grain.jpg` - the grainy texture on the cards
 
 Fan made, not official. Not connected to Amazon, Skybound or Image Comics.

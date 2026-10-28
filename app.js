@@ -328,16 +328,11 @@
     ctx.restore();
   }
 
-  // ---- slur check ------------------------------------------------------------------------
-  function blocked(){
-    var all = $('title').value + ' ' + (S.credits ? $('cred1').value + ' ' + $('cred2').value : '');
-    return !!(window.megumiIsExplicit && window.megumiIsExplicit(all));
-  }
-  function syncBlocked(){
-    var b = blocked();
-    $('frame').classList.toggle('blocked', b); $('nope').hidden = !b;
-    ['savePng','gif','record','copy','play'].forEach(function(id){ $(id).disabled = b || busy; });
-    return b;
+  // ---- buttons -----------------------------------------------------------------------------
+  // turns the save buttons off while a GIF or video is being made
+  function syncButtons(){
+    ['savePng','gif','record','copy','play'].forEach(function(id){ $(id).disabled = busy; });
+    return false;
   }
 
   // ---- drawing on screen -----------------------------------------------------------------
@@ -345,7 +340,7 @@
   function redraw(){
     if(playing) return;
     cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(function(){ draw(cx, null); syncBlocked(); });
+    raf = requestAnimationFrame(function(){ draw(cx, null); syncButtons(); });
   }
 
   // ---- sound (made in the browser, no files) ----------------------------------------------
@@ -437,7 +432,7 @@
     });
   }
   $('play').addEventListener('click', function(){
-    if(playing || syncBlocked()) return;
+    if(playing || syncButtons()) return;
     scheduleSounds(); play().then(redraw);
   });
 
@@ -455,11 +450,11 @@
     return new Promise(function(res){ var c = canvas(W, H); draw(c.getContext('2d'), null); c.toBlob(res, 'image/png'); });
   }
   $('savePng').addEventListener('click', function(){
-    if(syncBlocked()) return;
+    if(syncButtons()) return;
     finalBlob().then(function(b){ saveBlob(b, fileName('png')); say('PNG saved.'); });
   });
   $('copy').addEventListener('click', function(){
-    if(syncBlocked()) return;
+    if(syncButtons()) return;
     if(!navigator.clipboard || !window.ClipboardItem){ say('Copy is not available in this browser. Use Save PNG.'); return; }
     navigator.clipboard.write([new ClipboardItem({ 'image/png': finalBlob() })])
       .then(function(){ say('Copied! paste it anywhere.'); })
@@ -467,9 +462,9 @@
   });
 
   function tick(){ return new Promise(function(r){ setTimeout(r, 0); }); }
-  function setBusy(b){ busy = b; syncBlocked(); $('random').disabled = b; }
+  function setBusy(b){ busy = b; syncButtons(); $('random').disabled = b; }
   $('gif').addEventListener('click', async function(){
-    if(busy || syncBlocked()) return;
+    if(busy || syncButtons()) return;
     setBusy(true);
     try{
       var gw = parseInt($('gifW').value, 10), gh = Math.round(gw*9/16), fps = 15, D = durS();
@@ -492,7 +487,7 @@
   });
 
   $('record').addEventListener('click', function(){
-    if(busy || syncBlocked()) return;
+    if(busy || syncButtons()) return;
     if(!card.captureStream || !window.MediaRecorder){ say('This browser cannot record video. Try Chrome or Firefox, or save a GIF.'); return; }
     var types = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
     var type = types.filter(function(t){ return MediaRecorder.isTypeSupported(t); })[0] || '';
